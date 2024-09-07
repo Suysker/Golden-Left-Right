@@ -3,7 +3,7 @@
 // @description  按住"→"键倍速播放, 按住"←"键减速播放, 松开恢复原来的倍速，灵活追剧看视频~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
 // @icon         https://image.suysker.xyz/i/2023/10/09/artworks-QOnSW1HR08BDMoe9-GJTeew-t500x500.webp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.0.1
 // @author       Suysker
 // @match        http://*/*
 // @match        https://*/*
@@ -22,6 +22,7 @@
     const DOMAIN_BLOCK_LIST_KEY = "blockedDomains"; // 存储禁用的根域名列表的键名
     let keyboardEventsRegistered = false; // 确保键盘事件只注册一次
     let debug = false; // 控制日志的输出，正式环境关闭
+    let cachedVideos = []; // 缓存视频列表
 
     const loadSetting = async (key, defaultValue) => {
         const value = await GM_getValue(key, defaultValue);
@@ -88,10 +89,6 @@
         return video && !video.paused && video.currentTime > 0;
     };
 
-    const getAllVideos = () => {
-        return Array.from(document.getElementsByTagName('video'));
-    };
-
     const addPlayEventListeners = (video) => {
         video.addEventListener('play', () => {
             state.lastPlayedVideo = video; // 仅在视频播放时更新
@@ -99,23 +96,36 @@
         });
     };
 
-    const initVideoListeners = () => {
-        const allVideos = getAllVideos();
-        allVideos.forEach(addPlayEventListeners); // 为每个视频添加事件监听
+    // 初始化视频监听器并缓存视频
+    const initVideoListeners = (videos) => {
+        cachedVideos.push(...videos); // 缓存新视频
+        videos.forEach(addPlayEventListeners); // 为每个视频添加监听
+    };
+
+    // 获取当前页面上所有的视频并进行缓存
+    const cacheAllVideos = () => {
+        const allVideos = Array.from(document.getElementsByTagName('video'));
+        initVideoListeners(allVideos);
     };
 
     const getOptimalPageVideo = async () => {
-        const allVideos = getAllVideos();
 
-        const playingVideo = allVideos.find(isVideoPlaying);
-        if (playingVideo) {
-            return playingVideo;
-        }
-
+        // 检查 lastPlayedVideo 是否存在且可见，不检查是否正在播放
         if (state.lastPlayedVideo && isVideoVisible(state.lastPlayedVideo)) {
+            log('lastPlayedVideo 存在且可见');
             return state.lastPlayedVideo;
         }
 
+        // 如果 lastPlayedVideo 不存在或不可见，检查是否有其他视频正在播放
+        const allVideos = Array.from(document.getElementsByTagName('video'));
+        const playingVideo = allVideos.find(isVideoPlaying);
+        if (playingVideo) {
+            log('找到其他正在播放的视频:', playingVideo);
+            return playingVideo;
+        }
+
+        // 如果没有合适的视频，返回 null 并记录状态
+        log('未找到合适的视频');
         return null;
     };
 
@@ -238,6 +248,10 @@
         }
     };
 
+    const removeFromCache = (removedVideos) => {
+        cachedVideos = cachedVideos.filter(video => !removedVideos.includes(video));
+    };
+
     const init = async () => {
         const isBlocked = await isDomainBlocked();
         handleKeyboardEvents(!isBlocked);
@@ -246,13 +260,20 @@
         GM_registerMenuCommand('设置播放倍速', configurePlaybackRate);
         GM_registerMenuCommand('设置快进/回退秒数', configureChangeTime);
 
-        initVideoListeners();
+        cacheAllVideos();
 
         const observer = new MutationObserver((mutations) => {
-            const hasVideoChanges = mutations.some(mutation => Array.from(mutation.addedNodes).some(node => node.tagName === 'VIDEO'));
-            if (hasVideoChanges) {
-                initVideoListeners(); // 仅在检测到视频节点变化时才初始化监听器
-            }
+            mutations.forEach((mutation) => {
+                const addedVideos = Array.from(mutation.addedNodes).filter(node => node.tagName === 'VIDEO');
+                if (addedVideos.length > 0) {
+                    initVideoListeners(addedVideos); // 仅初始化新增视频
+                }
+
+                const removedVideos = Array.from(mutation.removedNodes).filter(node => node.tagName === 'VIDEO');
+                if (removedVideos.length > 0) {
+                    removeFromCache(removedVideos); // 移除销毁的视频元素
+                }
+            });
         });
         observer.observe(document.body, { childList: true, subtree: true });
     };
