@@ -3,7 +3,7 @@
 // @description  按住"→"键倍速播放, 按住"←"键减速播放, 松开恢复原来的倍速，灵活追剧看视频~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
 // @icon         https://image.suysker.xyz/i/2023/10/09/artworks-QOnSW1HR08BDMoe9-GJTeew-t500x500.webp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.0.2
 // @author       Suysker
 // @match        http://*/*
 // @match        https://*/*
@@ -19,6 +19,7 @@
 
     const DEFAULT_RATE = 2;   // 默认倍速
     const DEFAULT_TIME = 5;   // 默认秒数
+    const DEFAULT_RL_TIME = 180;   // 左右同时按下秒数
     const DOMAIN_BLOCK_LIST_KEY = "blockedDomains"; // 存储禁用的根域名列表的键名
     let keyboardEventsRegistered = false; // 确保键盘事件只注册一次
     let debug = false; // 控制日志的输出，正式环境关闭
@@ -67,12 +68,13 @@
     };
 
     const state = {
-        downCount: 0,
         playbackRate: DEFAULT_RATE,   // 播放倍速
         changeTime: DEFAULT_TIME,     // 快进/回退秒数
         pageVideo: null,
         lastPlayedVideo: null,        // 记录上一个播放过的视频（通过 play 事件更新）
-        originalPlaybackRate: 1       // 存储原来的播放速度
+        originalPlaybackRate: 1,      // 存储原来的播放速度
+        leftKeyPressed: false,        // 追踪左键状态
+        rightKeyPressed: false        // 追踪右键状态
     };
 
     const isVideoVisible = (video) => {
@@ -162,17 +164,29 @@
         }
     };
 
+    const checkBothKeysPressed = async () => {
+        if (state.leftKeyPressed && state.rightKeyPressed && await checkPageVideo()) {
+            state.pageVideo.currentTime += DEFAULT_RL_TIME;
+            log(`同时按下左右键，快进 ${DEFAULT_RL_TIME} 秒`);
+            return true; // 表示已处理
+        }
+        return false;
+    };
+
     const onRightKeyDown = async (e) => {
         if (e.keyCode !== 39 || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
-        state.downCount++;
-        if (state.downCount === 2 && await checkPageVideo()) {
-            if (isVideoPlaying(state.pageVideo)) {
-                state.originalPlaybackRate = state.pageVideo.playbackRate;
-                state.pageVideo.playbackRate = state.playbackRate;
-                log('加速播放中, 倍速: ' + state.playbackRate);
-            }
+        if (state.rightKeyPressed) return;  // 避免重复触发
+        state.rightKeyPressed = true;
+
+        // 检查是否同时按下左右键
+        if (await checkBothKeysPressed()) return;
+
+        if (await checkPageVideo() && isVideoPlaying(state.pageVideo)) {
+            state.originalPlaybackRate = state.pageVideo.playbackRate;
+            state.pageVideo.playbackRate = state.playbackRate;
+            log('加速播放中, 倍速: ' + state.playbackRate);
         }
     };
 
@@ -180,30 +194,34 @@
         if (e.keyCode !== 39 || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
-        if (state.downCount === 1 && await checkPageVideo()) {
+        state.rightKeyPressed = false;
+
+        if (await checkPageVideo()) {
             state.pageVideo.currentTime += state.changeTime;
             log('前进 ' + state.changeTime + ' 秒');
         }
 
+        // 恢复原来的倍速
         if (state.pageVideo && state.pageVideo.playbackRate !== state.originalPlaybackRate) {
             state.pageVideo.playbackRate = state.originalPlaybackRate;
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
-
-        state.downCount = 0;
     };
 
     const onLeftKeyDown = async (e) => {
         if (e.keyCode !== 37 || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
-        state.downCount++;
-        if (state.downCount === 2 && await checkPageVideo()) {
-            if (isVideoPlaying(state.pageVideo)) {
-                state.originalPlaybackRate = state.pageVideo.playbackRate;
-                state.pageVideo.playbackRate = 1 / state.playbackRate;
-                log('减速播放中, 倍速: ' + state.pageVideo.playbackRate);
-            }
+        if (state.leftKeyPressed) return;  // 避免重复触发
+        state.leftKeyPressed = true;
+
+        // 检查是否同时按下左右键
+        if (await checkBothKeysPressed()) return;
+
+        if (await checkPageVideo() && isVideoPlaying(state.pageVideo)) {
+            state.originalPlaybackRate = state.pageVideo.playbackRate;
+            state.pageVideo.playbackRate = 1 / state.playbackRate;
+            log('减速播放中, 倍速: ' + state.pageVideo.playbackRate);
         }
     };
 
@@ -211,17 +229,18 @@
         if (e.keyCode !== 37 || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
-        if (state.downCount === 1 && await checkPageVideo()) {
+        state.leftKeyPressed = false;
+
+        if (await checkPageVideo()) {
             state.pageVideo.currentTime -= state.changeTime;
             log('回退 ' + state.changeTime + ' 秒');
         }
 
+        // 恢复原来的倍速
         if (state.pageVideo && state.pageVideo.playbackRate !== state.originalPlaybackRate) {
             state.pageVideo.playbackRate = state.originalPlaybackRate;
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
-
-        state.downCount = 0;
     };
 
     const configurePlaybackRate = async () => {
