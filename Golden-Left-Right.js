@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         黄金左右键
-// @description  按住"→"键倍速播放, 按住"←"键减速播放, 松开恢复原来的倍速，灵活追剧看视频~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
+// @description  按住"→"键倍速播放，按住"←"键减速播放，松开恢复原来的倍速，轻松追剧，看视频更灵活，还能快进/跳过大部分网站的广告！~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
 // @icon         https://image.suysker.xyz/i/2023/10/09/artworks-QOnSW1HR08BDMoe9-GJTeew-t500x500.webp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.2
+// @version      1.0.3
 // @author       Suysker
 // @match        http://*/*
 // @match        https://*/*
@@ -73,8 +73,8 @@
         pageVideo: null,
         lastPlayedVideo: null,        // 记录上一个播放过的视频（通过 play 事件更新）
         originalPlaybackRate: 1,      // 存储原来的播放速度
-        leftKeyPressed: false,        // 追踪左键状态
-        rightKeyPressed: false        // 追踪右键状态
+        rightKeyDownCount: 0,         // 追踪右键按下次数
+        leftKeyDownCount: 0           // 追踪左键按下次数
     };
 
     const isVideoVisible = (video) => {
@@ -165,7 +165,7 @@
     };
 
     const checkBothKeysPressed = async () => {
-        if (state.leftKeyPressed && state.rightKeyPressed && await checkPageVideo()) {
+        if (state.rightKeyDownCount == 1 && state.leftKeyDownCount == 1 && await checkPageVideo()) {
             state.pageVideo.currentTime += DEFAULT_RL_TIME;
             log(`同时按下左右键，快进 ${DEFAULT_RL_TIME} 秒`);
             return true; // 表示已处理
@@ -177,13 +177,12 @@
         if (e.keyCode !== 39 || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
-        if (state.rightKeyPressed) return;  // 避免重复触发
-        state.rightKeyPressed = true;
+        state.rightKeyDownCount++;
 
         // 检查是否同时按下左右键
         if (await checkBothKeysPressed()) return;
 
-        if (await checkPageVideo() && isVideoPlaying(state.pageVideo)) {
+        if (state.rightKeyDownCount == 2 && await checkPageVideo() && isVideoPlaying(state.pageVideo)) {
             state.originalPlaybackRate = state.pageVideo.playbackRate;
             state.pageVideo.playbackRate = state.playbackRate;
             log('加速播放中, 倍速: ' + state.playbackRate);
@@ -194,9 +193,8 @@
         if (e.keyCode !== 39 || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
-        state.rightKeyPressed = false;
 
-        if (await checkPageVideo()) {
+        if (state.rightKeyDownCount == 1 && await checkPageVideo()) {
             state.pageVideo.currentTime += state.changeTime;
             log('前进 ' + state.changeTime + ' 秒');
         }
@@ -206,19 +204,20 @@
             state.pageVideo.playbackRate = state.originalPlaybackRate;
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
+
+        state.rightKeyDownCount = 0
     };
 
     const onLeftKeyDown = async (e) => {
         if (e.keyCode !== 37 || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
-        if (state.leftKeyPressed) return;  // 避免重复触发
-        state.leftKeyPressed = true;
+        state.leftKeyDownCount++;
 
         // 检查是否同时按下左右键
         if (await checkBothKeysPressed()) return;
 
-        if (await checkPageVideo() && isVideoPlaying(state.pageVideo)) {
+        if (state.leftKeyDownCount == 2 && await checkPageVideo() && isVideoPlaying(state.pageVideo)) {
             state.originalPlaybackRate = state.pageVideo.playbackRate;
             state.pageVideo.playbackRate = 1 / state.playbackRate;
             log('减速播放中, 倍速: ' + state.pageVideo.playbackRate);
@@ -229,9 +228,8 @@
         if (e.keyCode !== 37 || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
-        state.leftKeyPressed = false;
 
-        if (await checkPageVideo()) {
+        if (state.leftKeyDownCount == 1 && await checkPageVideo()) {
             state.pageVideo.currentTime -= state.changeTime;
             log('回退 ' + state.changeTime + ' 秒');
         }
@@ -241,6 +239,8 @@
             state.pageVideo.playbackRate = state.originalPlaybackRate;
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
+
+        state.leftKeyDownCount = 0
     };
 
     const configurePlaybackRate = async () => {
