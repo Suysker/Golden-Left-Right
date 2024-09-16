@@ -3,7 +3,7 @@
 // @description  按住"→"键倍速播放，按住"←"键减速播放，松开恢复原来的倍速，轻松追剧，看视频更灵活，还能快进/跳过大部分网站的广告！~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
 // @icon         https://image.suysker.xyz/i/2023/10/09/artworks-QOnSW1HR08BDMoe9-GJTeew-t500x500.webp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.3
+// @version      1.0.4
 // @author       Suysker
 // @match        http://*/*
 // @match        https://*/*
@@ -100,8 +100,12 @@
 
     // 初始化视频监听器并缓存视频
     const initVideoListeners = (videos) => {
-        cachedVideos.push(...videos); // 缓存新视频
-        videos.forEach(addPlayEventListeners); // 为每个视频添加监听
+        videos.forEach(video => {
+            if (!cachedVideos.includes(video)) {  // 避免重复添加
+                cachedVideos.push(video);  // 缓存新视频
+                addPlayEventListeners(video); // 为每个新视频添加监听
+            }
+        });
     };
 
     // 获取当前页面上所有的视频并进行缓存
@@ -283,19 +287,25 @@
 
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
-                const addedVideos = Array.from(mutation.addedNodes).filter(node => node.tagName === 'VIDEO');
-                if (addedVideos.length > 0) {
-                    initVideoListeners(addedVideos); // 仅初始化新增视频
-                }
-
-                const removedVideos = Array.from(mutation.removedNodes).filter(node => node.tagName === 'VIDEO');
-                if (removedVideos.length > 0) {
-                    removeFromCache(removedVideos); // 移除销毁的视频元素
-                }
+                const addedNodes = Array.from(mutation.addedNodes);
+                addedNodes.forEach(node => {
+                    const addedVideos = findVideosRecursively(node); // 递归查找新增节点中的 video
+                    if (addedVideos.length > 0) {
+                        initVideoListeners(addedVideos); // 初始化新增视频
+                    }
+                });
+    
+                const removedNodes = Array.from(mutation.removedNodes);
+                removedNodes.forEach(node => {
+                    const removedVideos = findVideosRecursively(node); // 递归查找移除节点中的 video
+                    if (removedVideos.length > 0) {
+                        removeFromCache(removedVideos); // 移除缓存中的视频
+                    }
+                });
             });
         });
-        observer.observe(document.body, { childList: true, subtree: true });
-    };
+            observer.observe(document.body, { childList: true, subtree: true });
+        };
 
     init();
 })();
