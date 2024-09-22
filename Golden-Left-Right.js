@@ -3,7 +3,7 @@
 // @description  按住"→"键倍速播放，按住"←"键减速播放，松开恢复原来的倍速，轻松追剧，看视频更灵活，还能快进/跳过大部分网站的广告！~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
 // @icon         https://image.suysker.xyz/i/2023/10/09/artworks-QOnSW1HR08BDMoe9-GJTeew-t500x500.webp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.5
+// @version      1.0.6
 // @author       Suysker
 // @match        http://*/*
 // @match        https://*/*
@@ -19,23 +19,23 @@
 
     // -------------------- Configuration Constants --------------------
     const DEFAULT_RATE = 2;                // 默认倍速
-    const DEFAULT_TIME = 5;                 // 默认秒数
-    const DEFAULT_RL_TIME = 180;            // 左右同时按下秒数
+    const DEFAULT_TIME = 5;                // 默认秒数
+    const DEFAULT_RL_TIME = 180;           // 左右同时按下秒数
     const DOMAIN_BLOCK_LIST_KEY = "blockedDomains"; // 存储禁用的根域名列表的键名
 
     // -------------------- State Variables --------------------
-    let keyboardEventsRegistered = false;   // 确保键盘事件只注册一次
-    const debug = true;                     // 控制日志的输出，正式环境关闭
-    let cachedVideos = [];                  // 缓存视频列表
+    let keyboardEventsRegistered = false;  // 确保键盘事件只注册一次
+    const debug = false;                   // 控制日志的输出，正式环境关闭
+    let cachedVideos = [];                 // 缓存视频列表
 
     const state = {
-        playbackRate: DEFAULT_RATE,          // 播放倍速
-        changeTime: DEFAULT_TIME,            // 快进/回退秒数
+        playbackRate: DEFAULT_RATE,        // 播放倍速
+        changeTime: DEFAULT_TIME,          // 快进/回退秒数
         pageVideo: null,
-        lastPlayedVideo: null,               // 记录上一个播放过的视频（通过 play 事件更新）
-        originalPlaybackRate: 1,             // 存储原来的播放速度
-        rightKeyDownCount: 0,                // 追踪右键按下次数
-        leftKeyDownCount: 0                  // 追踪左键按下次数
+        lastPlayedVideo: null,             // 记录上一个播放过的视频（通过 play 事件更新）
+        originalPlaybackRate: 1,           // 存储原来的播放速度
+        rightKeyDownCount: 0,              // 追踪右键按下次数
+        leftKeyDownCount: 0                // 追踪左键按下次数
     };
 
     // -------------------- Utility Functions --------------------
@@ -75,11 +75,24 @@
      * @returns {string} - The root domain (e.g., example.com).
      */
     const getRootDomain = () => {
-        const parts = location.hostname.split('.');
-        if (parts.length >= 2) {
-            return parts.slice(-2).join('.');
+        const hostname = location.hostname;
+        const domainParts = hostname.split('.');
+
+        // Handle special cases like localhost or IP addresses
+        if (domainParts.length <= 1) {
+            return hostname;
         }
-        return location.hostname;
+
+        // If the last part is a country code top-level domain (ccTLD), consider three parts
+        const ccTLDs = ['uk', 'jp', 'cn', 'au', 'nz', 'br', 'fr', 'de', 'kr', 'in', 'ru'];
+        const lastPart = domainParts[domainParts.length - 1];
+        const secondLastPart = domainParts[domainParts.length - 2];
+
+        if (ccTLDs.includes(lastPart) && domainParts.length >= 3) {
+            return domainParts.slice(-3).join('.');
+        } else {
+            return domainParts.slice(-2).join('.');
+        }
     };
 
     /**
@@ -113,7 +126,6 @@
             isNowBlocked = false;
         }
 
-        keyboardEventsRegistered = false; // 确保键盘事件重新注册
         handleKeyboardEvents(!isNowBlocked); // 根据新状态立即启用/禁用键盘事件
     };
 
@@ -191,18 +203,17 @@
     };
 
     /**
-     * Recursively finds all video elements within a given node.
+     * Finds all video elements within a given node.
      * @param {Node} node - The root node to search within.
      * @returns {HTMLVideoElement[]} - Array of found video elements.
      */
     const findVideosRecursively = (node) => {
-        let videos = [];
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            if (node.tagName.toLowerCase() === 'video') {
-                videos.push(node);
-            }
-            node.querySelectorAll('video').forEach(video => videos.push(video));
+        if (node.nodeType !== Node.ELEMENT_NODE) return [];
+        const videos = [];
+        if (node.tagName.toLowerCase() === 'video') {
+            videos.push(node);
         }
+        videos.push(...node.querySelectorAll('video'));
         return videos;
     };
 
@@ -297,7 +308,7 @@
      * @param {KeyboardEvent} e - The keyboard event.
      */
     const onRightKeyDown = async (e) => {
-        if (e.keyCode !== 39 || isInputFocused()) return;
+        if (e.code !== 'ArrowRight' || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
         state.rightKeyDownCount++;
@@ -317,7 +328,7 @@
      * @param {KeyboardEvent} e - The keyboard event.
      */
     const onRightKeyUp = async (e) => {
-        if (e.keyCode !== 39 || isInputFocused()) return;
+        if (e.code !== 'ArrowRight' || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
 
@@ -340,7 +351,7 @@
      * @param {KeyboardEvent} e - The keyboard event.
      */
     const onLeftKeyDown = async (e) => {
-        if (e.keyCode !== 37 || isInputFocused()) return;
+        if (e.code !== 'ArrowLeft' || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
         state.leftKeyDownCount++;
@@ -360,7 +371,7 @@
      * @param {KeyboardEvent} e - The keyboard event.
      */
     const onLeftKeyUp = async (e) => {
-        if (e.keyCode !== 37 || isInputFocused()) return;
+        if (e.code !== 'ArrowLeft' || isInputFocused()) return;
         e.preventDefault();
         e.stopPropagation();
 
@@ -437,7 +448,7 @@
                 mutations.forEach((mutation) => {
                     const addedNodes = Array.from(mutation.addedNodes);
                     addedNodes.forEach(node => {
-                        const addedVideos = findVideosRecursively(node); // 递归查找新增节点中的 video
+                        const addedVideos = findVideosRecursively(node); // 查找新增节点中的 video
                         if (addedVideos.length > 0) {
                             initVideoListeners(addedVideos); // 初始化新增视频
                             log('添加新视频:', addedVideos);
@@ -446,7 +457,7 @@
 
                     const removedNodes = Array.from(mutation.removedNodes);
                     removedNodes.forEach(node => {
-                        const removedVideos = findVideosRecursively(node); // 递归查找移除节点中的 video
+                        const removedVideos = findVideosRecursively(node); // 查找移除节点中的 video
                         if (removedVideos.length > 0) {
                             removeFromCache(removedVideos); // 移除缓存中的视频
                         }
