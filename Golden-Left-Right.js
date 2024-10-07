@@ -3,7 +3,7 @@
 // @description  按住"→"键倍速播放，按住"←"键减速播放，松开恢复原来的倍速，轻松追剧，看视频更灵活，还能快进/跳过大部分网站的广告！~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
 // @icon         https://image.suysker.xyz/i/2023/10/09/artworks-QOnSW1HR08BDMoe9-GJTeew-t500x500.webp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.6
+// @version      1.0.7
 // @author       Suysker
 // @match        http://*/*
 // @match        https://*/*
@@ -263,6 +263,21 @@
         return true;
     };
 
+    /**
+     * Sets the tabIndex of all progress bars to control focus behavior.
+     * @param {number} tabIndexValue - The value to set for the tabIndex.
+     */
+    function setFocusOnProgressBars(tabIndexValue) {
+        const progressBars = document.querySelectorAll('input[type="range"][class*="slider"], input[type="range"][class*="progress"]');
+        progressBars.forEach(progressBar => {
+            progressBar.tabIndex = tabIndexValue; // 设置聚焦行为
+            if (tabIndexValue === -1) {
+                progressBar.blur(); // 如果禁用聚焦则失去焦点
+            }
+            console.debug(`已设置进度条的tabIndex为: ${tabIndexValue}`, progressBar);
+        });
+    }
+
     // -------------------- Keyboard Event Handlers --------------------
 
     /**
@@ -313,6 +328,9 @@
         e.stopPropagation();
         state.rightKeyDownCount++;
 
+        // 禁用进度条聚焦
+        setFocusOnProgressBars(-1);
+
         // 检查是否同时按下左右键
         if (await checkBothKeysPressed()) return;
 
@@ -343,6 +361,9 @@
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
 
+        // 恢复进度条聚焦
+        setFocusOnProgressBars(0);
+
         state.rightKeyDownCount = 0;
     };
 
@@ -355,6 +376,9 @@
         e.preventDefault();
         e.stopPropagation();
         state.leftKeyDownCount++;
+
+        // 禁用进度条聚焦
+        setFocusOnProgressBars(-1);
 
         // 检查是否同时按下左右键
         if (await checkBothKeysPressed()) return;
@@ -385,6 +409,9 @@
             state.pageVideo.playbackRate = state.originalPlaybackRate;
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
+
+        // 恢复进度条聚焦
+        setFocusOnProgressBars(0);
 
         state.leftKeyDownCount = 0;
     };
