@@ -3,7 +3,7 @@
 // @description  按住"→"键倍速播放，按住"←"键减速播放，松开恢复原来的倍速，轻松追剧，看视频更灵活，还能快进/跳过大部分网站的广告！~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
 // @icon         https://image.suysker.xyz/i/2023/10/09/artworks-QOnSW1HR08BDMoe9-GJTeew-t500x500.webp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.7
+// @version      1.0.8
 // @author       Suysker
 // @match        http://*/*
 // @match        https://*/*
@@ -265,17 +265,38 @@
 
     /**
      * Sets the tabIndex of all progress bars to control focus behavior.
-     * @param {number} tabIndexValue - The value to set for the tabIndex.
      */
-    function setFocusOnProgressBars(tabIndexValue) {
-        const progressBars = document.querySelectorAll('input[type="range"][class*="slider"], input[type="range"][class*="progress"]');
-        progressBars.forEach(progressBar => {
-            progressBar.tabIndex = tabIndexValue; // 设置聚焦行为
-            if (tabIndexValue === -1) {
-                progressBar.blur(); // 如果禁用聚焦则失去焦点
-            }
-            console.debug(`已设置进度条的tabIndex为: ${tabIndexValue}`, progressBar);
+    function configureProgressBars() {
+        const configureProgressBar = (progressBar) => {
+
+            // 防止在有视频时意外获得焦点
+            progressBar.addEventListener('focus', () => {
+                if (checkPageVideo()) {
+                    progressBar.blur();        // 移除焦点
+                }
+            });
+
+            console.debug(`已配置进度条:`, progressBar);
+        };
+
+        // 初始配置页面上已有的进度条
+        const progressBars = document.querySelectorAll('input[type="range"][class*="slider"], input[type="range"][class*="progress"], input[type="range"][role="slider"]');
+
+        progressBars.forEach(configureProgressBar);
+
+        // 监听DOM变化，处理新添加的进度条
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        const progressBars = node.matches('input[type="range"]') ? [node] : node.querySelectorAll('input[type="range"][class*="slider"], input[type="range"][class*="progress"], input[type="range"][role="slider"]');
+                        progressBars.forEach(configureProgressBar);
+                    }
+                });
+            });
         });
+
+        observer.observe(document.body, { childList: true, subtree: true });
     }
 
     // -------------------- Keyboard Event Handlers --------------------
@@ -288,15 +309,15 @@
         if (enable && !keyboardEventsRegistered) {
             document.body.addEventListener('keydown', onRightKeyDown, { capture: true });
             document.body.addEventListener('keydown', onLeftKeyDown, { capture: true });
-            document.body.parentElement.addEventListener('keyup', onRightKeyUp, { capture: true });
-            document.body.parentElement.addEventListener('keyup', onLeftKeyUp, { capture: true });
+            document.body.addEventListener('keyup', onRightKeyUp, { capture: true });
+            document.body.addEventListener('keyup', onLeftKeyUp, { capture: true });
             keyboardEventsRegistered = true;
             log('键盘事件已注册');
         } else if (!enable && keyboardEventsRegistered) {
             document.body.removeEventListener('keydown', onRightKeyDown, { capture: true });
             document.body.removeEventListener('keydown', onLeftKeyDown, { capture: true });
-            document.body.parentElement.removeEventListener('keyup', onRightKeyUp, { capture: true });
-            document.body.parentElement.removeEventListener('keyup', onLeftKeyUp, { capture: true });
+            document.body.removeEventListener('keyup', onRightKeyUp, { capture: true });
+            document.body.removeEventListener('keyup', onLeftKeyUp, { capture: true });
             keyboardEventsRegistered = false;
             log('键盘事件已注销');
         }
@@ -328,9 +349,6 @@
         e.stopPropagation();
         state.rightKeyDownCount++;
 
-        // 禁用进度条聚焦
-        setFocusOnProgressBars(-1);
-
         // 检查是否同时按下左右键
         if (await checkBothKeysPressed()) return;
 
@@ -361,9 +379,6 @@
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
 
-        // 恢复进度条聚焦
-        setFocusOnProgressBars(0);
-
         state.rightKeyDownCount = 0;
     };
 
@@ -376,9 +391,6 @@
         e.preventDefault();
         e.stopPropagation();
         state.leftKeyDownCount++;
-
-        // 禁用进度条聚焦
-        setFocusOnProgressBars(-1);
 
         // 检查是否同时按下左右键
         if (await checkBothKeysPressed()) return;
@@ -410,8 +422,6 @@
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
 
-        // 恢复进度条聚焦
-        setFocusOnProgressBars(0);
 
         state.leftKeyDownCount = 0;
     };
@@ -494,6 +504,9 @@
 
             observer.observe(document.body, { childList: true, subtree: true });
             log('MutationObserver 已启动');
+
+            // 配置进度条的焦点行为
+            configureProgressBars();
         } catch (error) {
             console.error('初始化脚本时发生错误:', error);
         }
