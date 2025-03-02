@@ -3,7 +3,7 @@
 // @description  按住"→"键倍速播放，按住"←"键减速播放，松开恢复原来的倍速，轻松追剧，看视频更灵活，还能快进/跳过大部分网站的广告！~ 支持用户单独配置倍速和秒数，并可根据根域名启用或禁用脚本
 // @icon         https://image.suysker.xyz/i/2023/10/09/artworks-QOnSW1HR08BDMoe9-GJTeew-t500x500.webp
 // @namespace    http://tampermonkey.net/
-// @version      1.0.8
+// @version      1.0.9
 // @author       Suysker
 // @match        http://*/*
 // @match        https://*/*
@@ -130,11 +130,15 @@
     };
 
     /**
-     * Checks if any input-related element is currently focused.
+     * Checks if any input-related element (除了 <input type="range">) is currently focused.
      * @returns {boolean} - True if an input is focused, else false.
      */
     const isInputFocused = () => {
         const activeElement = document.activeElement;
+        // 如果当前激活的元素是 <input type="range"> 则忽略（不阻止脚本响应）
+        if (activeElement && activeElement.tagName.toLowerCase() === 'input' && activeElement.type === 'range') {
+            return false;
+        }
         const inputTypes = ['input', 'textarea', 'select', 'button'];
         const isContentEditable = activeElement && activeElement.isContentEditable;
         const isInputElement = activeElement && inputTypes.includes(activeElement.tagName.toLowerCase());
@@ -188,7 +192,7 @@
         videos.forEach(video => {
             if (!cachedVideos.includes(video)) {  // 避免重复添加
                 cachedVideos.push(video);         // 缓存新视频
-                addPlayEventListeners(video);    // 为每个新视频添加监听
+                addPlayEventListeners(video);       // 为每个新视频添加监听
             }
         });
     };
@@ -307,17 +311,18 @@
      */
     const handleKeyboardEvents = async (enable) => {
         if (enable && !keyboardEventsRegistered) {
-            document.body.addEventListener('keydown', onRightKeyDown, { capture: true });
-            document.body.addEventListener('keydown', onLeftKeyDown, { capture: true });
-            document.body.addEventListener('keyup', onRightKeyUp, { capture: true });
-            document.body.addEventListener('keyup', onLeftKeyUp, { capture: true });
+            // 将事件监听器绑定到 document 对象，使用 capture 模式，确保优先级更高
+            document.addEventListener('keydown', onRightKeyDown, { capture: true });
+            document.addEventListener('keydown', onLeftKeyDown, { capture: true });
+            document.addEventListener('keyup', onRightKeyUp, { capture: true });
+            document.addEventListener('keyup', onLeftKeyUp, { capture: true });
             keyboardEventsRegistered = true;
             log('键盘事件已注册');
         } else if (!enable && keyboardEventsRegistered) {
-            document.body.removeEventListener('keydown', onRightKeyDown, { capture: true });
-            document.body.removeEventListener('keydown', onLeftKeyDown, { capture: true });
-            document.body.removeEventListener('keyup', onRightKeyUp, { capture: true });
-            document.body.removeEventListener('keyup', onLeftKeyUp, { capture: true });
+            document.removeEventListener('keydown', onRightKeyDown, { capture: true });
+            document.removeEventListener('keydown', onLeftKeyDown, { capture: true });
+            document.removeEventListener('keyup', onRightKeyUp, { capture: true });
+            document.removeEventListener('keyup', onLeftKeyUp, { capture: true });
             keyboardEventsRegistered = false;
             log('键盘事件已注销');
         }
@@ -421,7 +426,6 @@
             state.pageVideo.playbackRate = state.originalPlaybackRate;
             log('恢复原来的倍速: ' + state.originalPlaybackRate);
         }
-
 
         state.leftKeyDownCount = 0;
     };
