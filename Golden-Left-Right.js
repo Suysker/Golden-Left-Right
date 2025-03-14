@@ -272,29 +272,37 @@
      */
     function configureProgressBars() {
         const configureProgressBar = (progressBar) => {
+            // 定义一个内部函数，为传入的元素添加 focus 事件处理
+            const disableFocus = (el) => {
+                el.addEventListener('focus', () => {
+                    if (checkPageVideo()) {
+                        el.blur();
+                    }
+                });
+            };
 
-            // 防止在有视频时意外获得焦点
-            progressBar.addEventListener('focus', () => {
-                if (checkPageVideo()) {
-                    progressBar.blur();        // 移除焦点
-                }
-            });
+            // 对当前进度条元素及其所有后代元素都进行配置
+            disableFocus(progressBar);
+            progressBar.querySelectorAll('*').forEach(disableFocus);
 
-            console.debug(`已配置进度条:`, progressBar);
+            console.debug('已配置进度条:', progressBar);
         };
 
         // 初始配置页面上已有的进度条
-        const progressBars = document.querySelectorAll('input[type="range"][class*="slider"], input[type="range"][class*="progress"], input[type="range"][role="slider"]');
-
+        const progressBars = document.querySelectorAll(
+            'input[type="range"][class*="slider"], input[type="range"][class*="progress"], input[type="range"][role="slider"], .yzmplayer-controller'
+        );
         progressBars.forEach(configureProgressBar);
 
-        // 监听DOM变化，处理新添加的进度条
+        // 监听 DOM 变化，处理新添加的进度条
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 mutation.addedNodes.forEach(node => {
                     if (node.nodeType === Node.ELEMENT_NODE) {
-                        const progressBars = node.matches('input[type="range"]') ? [node] : node.querySelectorAll('input[type="range"][class*="slider"], input[type="range"][class*="progress"], input[type="range"][role="slider"]');
-                        progressBars.forEach(configureProgressBar);
+                        const nodes = node.matches('input[type="range"], .yzmplayer-controller')
+                            ? [node]
+                            : node.querySelectorAll('input[type="range"][class*="slider"], input[type="range"][class*="progress"], input[type="range"][role="slider"], .yzmplayer-controller');
+                        nodes.forEach(configureProgressBar);
                     }
                 });
             });
