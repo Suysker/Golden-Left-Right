@@ -481,6 +481,9 @@
      */
     const init = async () => {
         try {
+            state.playbackRate = await loadSetting('playbackRate', DEFAULT_RATE);
+            state.changeTime = await loadSetting('changeTime', DEFAULT_TIME);
+            
             const isBlocked = await isDomainBlocked();
             handleKeyboardEvents(!isBlocked);
 
